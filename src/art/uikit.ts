@@ -164,7 +164,7 @@ export function uiSprites(): SpriteDef[] {
   out.push(icon('star', `<path d="${starPath(22, 10)}" fill="#ffc93a" ${st(3)}/><path d="${starPath(14, 6.5)}" fill="#ffe680" opacity=".7" transform="translate(-1,-2)"/>`, 52, 3));
   out.push(icon('star_empty', `<path d="${starPath(22, 10)}" fill="#5a4636" ${st(3)}/>`, 52, 3));
   out.push(icon('ic_star', `<path d="${starPath(20, 9)}" fill="#ffc93a" ${st(3)}/>`));
-  out.push(icon('ic_xp', `<path d="${starPath(21, 11)}" fill="#ffb02e" ${st(3)}/><path d="M-9,-5 L-3,3 M-3,-5 L-9,3 M2,3 L2,-5 L6,-5 C9,-5 9,0 6,0 L2,0" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>`, 52));
+  out.push(icon('ic_xp', `<path d="${starPath(21, 11)}" fill="#ffb02e" ${st(3)}/><path d="M-7,3 L0,-5 L7,3 M-7,9 L0,1 L7,9" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`, 52));
   out.push(icon('ic_gear', Array.from({ length: 8 }, (_, i) => `<path d="M-4.5,-21 L4.5,-21 L3.5,-13 L-3.5,-13 Z" transform="rotate(${i * 45})" fill="#d5dee6" ${st(2.6)}/>`).join('') + `<circle r="14" fill="#d5dee6" ${st(3)}/><circle r="6" fill="#4a3526" ${st(2.4)}/>`));
   out.push(icon('ic_pause', `<rect x="-10" y="-12" width="7" height="24" rx="2.5" fill="#fff6dc" ${st(2.6)}/><rect x="3" y="-12" width="7" height="24" rx="2.5" fill="#fff6dc" ${st(2.6)}/>`));
   out.push(icon('ic_play', `<path d="M-8,-13 L13,0 L-8,13 Z" fill="#fff6dc" ${st(2.8)}/>`));
