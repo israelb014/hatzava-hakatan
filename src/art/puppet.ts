@@ -21,6 +21,7 @@ export class Puppet extends Phaser.GameObjects.Container {
   private atk = -1;
   private flashT = 0;
   private flashed = false;
+  private flashCd = 0;
   moving = false;
   dying = -1;
   facing = 1;
@@ -63,6 +64,7 @@ export class Puppet extends Phaser.GameObjects.Container {
     this.atk = -1;
     this.dying = -1;
     this.flashT = 0;
+    this.flashCd = 0;
     this.clearFlash();
     this.setAlpha(1);
     this.rotation = 0;
@@ -81,10 +83,17 @@ export class Puppet extends Phaser.GameObjects.Container {
   }
 
   flash() {
-    this.flashT = 0.09;
+    // לא מהבהבים ברצף - אחרת דמות שסופגת הרבה מכות נשארת לבנה
+    if (this.flashCd > 0) return;
+    const big = this.def.scale >= 1.8;
+    this.flashT = big ? 0.06 : 0.09;
+    this.flashCd = big ? 0.3 : 0.2;
     if (!this.flashed) {
       this.flashed = true;
-      for (const p of this.parts) p.setTintFill(0xffffff);
+      for (const p of this.parts) {
+        if (big) p.setTint(0xffb0a0);
+        else p.setTintFill(0xffffff);
+      }
     }
   }
 
@@ -102,6 +111,7 @@ export class Puppet extends Phaser.GameObjects.Container {
   /** מחזיר true כשאנימציית המוות הסתיימה */
   tick(dt: number): boolean {
     this.t += dt;
+    if (this.flashCd > 0) this.flashCd -= dt;
     if (this.flashT > 0) {
       this.flashT -= dt;
       if (this.flashT <= 0) this.clearFlash();

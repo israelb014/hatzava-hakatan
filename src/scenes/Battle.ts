@@ -92,6 +92,7 @@ export class BattleScene extends Phaser.Scene {
   private totalEnemies = 0;
   private buffGlow!: Phaser.GameObjects.Image;
   private time0 = 0;
+  private dmgAcc = new Map<number, { e: Ent; sum: number; big: boolean; t: number; h: number }>();
 
   constructor() {
     super('Battle');
@@ -123,6 +124,7 @@ export class BattleScene extends Phaser.Scene {
     this.moveL = this.moveR = false;
     this.camX = 0;
     this.time0 = 0;
+    this.dmgAcc.clear();
 
     this.scenery = new Scenery(this, this.lv.region, boss);
     this.buffGlow = img(this, 0, 0, 'glow', 5).setTint(0xffd23e).setAlpha(0).setDepth(6);
@@ -318,8 +320,15 @@ export class BattleScene extends Phaser.Scene {
         if (!this.onScreen(e.e.x)) break;
         const y = yOf(e.e);
         const hh = 60 * (p?.def.scale ?? 1);
-        this.spawnFx('spark', e.e.x + (Math.random() - 0.5) * 20, y - hh * 0.6, { life: 0.2, s0: 0.5, s1: e.big ? 1.6 : 1.0, rot: Math.random() * 3 });
-        this.num(e.e.x, y - hh, String(e.dmg), e.e.side === 0 ? 0xff6a55 : e.big ? 0xffd23e : 0xffffff, e.big ? 0.8 : 0.58);
+        // מספרי הנזק מצטברים לכל דמות כדי שלא יציפו את המסך
+        const acc = this.dmgAcc.get(e.e.id);
+        if (acc) {
+          acc.sum += e.dmg;
+          acc.big = acc.big || e.big;
+        } else {
+          this.dmgAcc.set(e.e.id, { e: e.e, sum: e.dmg, big: e.big, t: this.time0, h: hh });
+          this.spawnFx('spark', e.e.x + (Math.random() - 0.5) * 20, y - hh * 0.6, { life: 0.2, s0: 0.5, s1: e.big ? 1.6 : 1.0, rot: Math.random() * 3 });
+        }
         audio.play('hit');
         if (e.e.hero) this.cameras.main.shake(90, 0.004);
         break;
@@ -481,6 +490,11 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private tickFx(dt: number) {
+    for (const [id, a] of this.dmgAcc) {
+      if (this.time0 - a.t < 0.16 && !this.ended) continue;
+      this.dmgAcc.delete(id);
+      if (this.onScreen(a.e.x)) this.num(a.e.x, yOf(a.e) - a.h, String(a.sum), a.e.side === 0 ? 0xff6a55 : a.big ? 0xffd23e : 0xffffff, a.big ? 0.8 : 0.58);
+    }
     for (let i = this.fx.length - 1; i >= 0; i--) {
       const f = this.fx[i];
       f.life += dt;
@@ -687,7 +701,7 @@ export class BattleScene extends Phaser.Scene {
       if (last && sum.firstClear) c.add(txt(this, 0, 574, 'כל הכבוד! הבסת את שר השדים והצלת את הממלכה!', 24, C.cream, { weight: '900' }));
     } else {
       c.add(nine(this, 0, 330, 'panel_parch', 620, 250, 22));
-      c.add(txt(this, 0, 240, 'הגיבור נפל בקרב', 30, C.ink, { weight: '900' }));
+      c.add(txt(this, 0, 240, this.sim.hero.hp > 0 ? 'נסוגת מהקרב' : 'הגיבור נפל בקרב', 30, C.ink, { weight: '900' }));
       const tips = ['שדרג את הצבא או את הציוד', 'גייס חיילים נוספים למילוי הצבא', 'חזור לשלבים קודמים כדי לאסוף זהב'];
       tips.forEach((t, i) => {
         c.add(img(this, 250, 292 + i * 42, 'ic_up', 0.5));
