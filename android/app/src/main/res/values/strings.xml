@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">הצבא הקטן</string>
+    <string name="title_activity_main">הצבא הקטן</string>
+    <string name="package_name">io.github.israelb014.hatzavahakatan</string>
+    <string name="custom_url_scheme">io.github.israelb014.hatzavahakatan</string>
+</resources>

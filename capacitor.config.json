@@ -1,0 +1,12 @@
+{
+  "appId": "io.github.israelb014.hatzavahakatan",
+  "appName": "הצבא הקטן",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#3a2415",
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

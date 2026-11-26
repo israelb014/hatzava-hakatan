@@ -1,0 +1,93 @@
+{
+  "name": "hatzava-hakatan",
+  "version": "1.0.0",
+  "description": "הצבא הקטן - משחק קרבות צבא דו-ממדי",
+  "author": "israelb014",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "homepage": "https://israelb014.github.io/hatzava-hakatan/",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "balance": "vitest run --config vitest.balance.config.ts",
+    "electron": "electron .",
+    "dist:win": "electron-builder --win nsis --publish never",
+    "dist:linux": "electron-builder --linux AppImage --publish never",
+    "icons": "vitest run --config scripts/icon.config.ts && node scripts/render-icons.cjs"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "build": {
+    "appId": "io.github.israelb014.hatzavahakatan",
+    "productName": "HatzavaHakatan",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "israelb014",
+        "repo": "hatzava-hakatan",
+        "releaseType": "release"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "hatzava-hakatan-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "shortcutName": "הצבא הקטן",
+      "createDesktopShortcut": true
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "Game",
+      "artifactName": "hatzava-hakatan.${ext}",
+      "executableName": "hatzava-hakatan",
+      "synopsis": "The Little Army"
+    },
+    "asar": true
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.6.11",
+    "@capacitor/cli": "^7.6.11",
+    "@capacitor/core": "^7.6.11",
+    "@fontsource/rubik": "^5.3.0",
+    "electron": "^35.7.5",
+    "electron-builder": "^25.1.8",
+    "phaser": "^3.90.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.6",
+    "vitest": "^3.2.7"
+  }
+}
