@@ -27,6 +27,7 @@ describe('שמירה', () => {
   it('קוד גיבוי: ייצוא וייבוא זהים, כולל עברית', () => {
     const s = newSave();
     s.gems = 777;
+    s.heroLvl = 10;
     s.units.mage = { lvl: 12, count: 9 };
     s.daily.day = 'יום-בדיקה';
     const code = exportCode(s);

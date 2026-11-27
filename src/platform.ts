@@ -3,6 +3,7 @@ import { registerPlugin } from '@capacitor/core';
 import { G, VERSION, persist } from './core';
 import { exportCode, importCode } from './game/save';
 import { audio } from './audio';
+import { pickApkUpdate, type ReleaseInfo } from './game/version';
 
 const REPO = 'israelb014/hatzava-hakatan';
 
@@ -82,16 +83,6 @@ export function openBackupDialog(onImport: () => void) {
   ov.querySelector('#d-close')!.addEventListener('click', closeOverlay);
 }
 
-export function newer(a: string, b: string): boolean {
-  const pa = a.replace(/^v/, '').split('.').map((x) => parseInt(x, 10) || 0);
-  const pb = b.replace(/^v/, '').split('.').map((x) => parseInt(x, 10) || 0);
-  for (let i = 0; i < 3; i++) {
-    if ((pa[i] ?? 0) > (pb[i] ?? 0)) return true;
-    if ((pa[i] ?? 0) < (pb[i] ?? 0)) return false;
-  }
-  return false;
-}
-
 // ---------- אנדרואיד ----------
 interface UpdaterPlugin {
   downloadAndInstall(o: { url: string }): Promise<void>;
@@ -102,11 +93,10 @@ async function checkAndroidUpdate() {
   try {
     const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } });
     if (!r.ok) return;
-    const j = (await r.json()) as { tag_name: string; assets: { name: string; browser_download_url: string }[] };
-    if (!j.tag_name || !newer(j.tag_name, VERSION)) return;
-    const apk = j.assets?.find((a) => a.name.endsWith('.apk'));
-    if (!apk) return;
-    const ver = j.tag_name.replace(/^v/, '');
+    const up0 = pickApkUpdate((await r.json()) as ReleaseInfo, VERSION);
+    if (!up0) return;
+    const ver = up0.version;
+    const apk = { browser_download_url: up0.url };
     const ov = openOverlay(
       `<h2>יש גרסה חדשה</h2><p>גרסה ${ver} מוכנה להתקנה. ההתקדמות שלך נשמרת.</p>` +
         `<svg class="ring" id="d-ring" viewBox="0 0 120 120" style="display:none"><circle cx="60" cy="60" r="50" fill="none" stroke="#c9a05a" stroke-width="12"/><circle id="d-arc" cx="60" cy="60" r="50" fill="none" stroke="#e8641e" stroke-width="12" stroke-linecap="round" stroke-dasharray="314" stroke-dashoffset="314" transform="rotate(-90 60 60)"/></svg>` +

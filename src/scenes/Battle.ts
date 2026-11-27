@@ -1,6 +1,6 @@
 // מסך הקרב (כולל קרב בוס, ניצחון והפסד)
 import Phaser from 'phaser';
-import { G, W, H, go, setupScene, fmt, persist } from '../core';
+import { G, V, W, H, L, R, go, setupScene, fmt, persist } from '../core';
 import { img, setFrame, FRAMES } from '../art/svg';
 import { Puppet } from '../art/puppet';
 import { CHARS } from '../art/chars';
@@ -12,8 +12,14 @@ import { BattleSim, FIELD_W, type Ent, type SimEvent } from '../game/sim';
 import { audio } from '../audio';
 import { itemIcon } from './Hero';
 
-const Y0 = 478;
-const Y1 = 652;
+// רצועת הקרקע שעליה נלחמים - מעל כפתורי הכישורים והתנועה
+const GROUND_TOP = 372;
+const Y0 = 398;
+const Y1 = 560;
+/** בקרב החיילים קטנים מעט, כדי שצבא גדול יישאר קריא; הגיבור גדול יותר */
+const UNIT_SCALE = 0.86;
+const HERO_SCALE = 1.2;
+const MAX_NUMS = 12;
 const yOf = (e: Ent) => Y0 + e.y * (Y1 - Y0);
 
 function fallenText(fallen: number, back: number, many: string, one: string): string {
@@ -93,6 +99,8 @@ export class BattleScene extends Phaser.Scene {
   private buffGlow!: Phaser.GameObjects.Image;
   private time0 = 0;
   private dmgAcc = new Map<number, { e: Ent; sum: number; big: boolean; t: number; h: number }>();
+  private heroRing!: Phaser.GameObjects.Image;
+  private hudBtns: { c: Phaser.GameObjects.Container; x: number; y: number }[] = [];
 
   constructor() {
     super('Battle');
@@ -126,7 +134,9 @@ export class BattleScene extends Phaser.Scene {
     this.time0 = 0;
     this.dmgAcc.clear();
 
-    this.scenery = new Scenery(this, this.lv.region, boss);
+    this.hudBtns = [];
+    this.scenery = new Scenery(this, this.lv.region, boss, GROUND_TOP);
+    this.heroRing = img(this, 0, 0, 'ringflat', 1.05).setTint(0xffe27a).setDepth(6);
     this.buffGlow = img(this, 0, 0, 'glow', 5).setTint(0xffd23e).setAlpha(0).setDepth(6);
     this.hpG = this.add.graphics().setDepth(790);
 
@@ -150,7 +160,7 @@ export class BattleScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => kb.removeAllListeners());
 
     if (this.level === 1 && s.stars[0] === 0) {
-      const tip = this.add.container(W / 2, 560).setDepth(950);
+      const tip = this.add.container(W / 2, 596).setDepth(950);
       const t = txt(this, 0, 0, 'הזז את הגיבור עם החצים · הפעל כישורים ושיקויים מימין', 22, C.cream, { weight: '700' });
       tip.add(nine(this, 0, 0, 'pill', t.width + 40, 48, 20));
       tip.add(t);
@@ -159,25 +169,32 @@ export class BattleScene extends Phaser.Scene {
     setupScene(this);
   }
 
+  /** שינוי גודל חלון באמצע קרב: רק מיישרים מחדש את המצלמה, הקרב ממשיך */
+  onResize() {
+    const cam = this.cameras.main;
+    cam.setZoom(G.res);
+    cam.centerOn(W / 2, H / 2);
+  }
+
   // ---------- HUD ----------
   private buildHud(boss: boolean) {
     const D = 900;
-    roundBtn(this, 54, 52, 'round_dark', 'ic_pause', 68, () => this.togglePause()).setDepth(D);
-    nine(this, 160, 52, 'pill', 120, 46, 20).setDepth(D);
-    this.waveT = txt(this, 160, 52, '', 23, C.cream, { weight: '900' }).setDepth(D);
+    roundBtn(this, L(54), 52, 'round_dark', 'ic_pause', 68, () => this.togglePause()).setDepth(D);
+    nine(this, L(160), 52, 'pill', 120, 46, 20).setDepth(D);
+    this.waveT = txt(this, L(160), 52, '', 23, C.cream, { weight: '900' }).setDepth(D);
     // גיבור
-    nine(this, 1126, 40, 'pill', 280, 50, 20).setDepth(D);
-    this.heroBar = bar(this, 1040, 28, 220, 24, 0x6fd04a, '', 16);
+    nine(this, R(1126), 40, 'pill', 280, 50, 20).setDepth(D);
+    this.heroBar = bar(this, R(1040), 28, 220, 24, 0x6fd04a, '', 16);
     this.heroBar.g.setDepth(D);
     this.heroBar.t!.setDepth(D);
-    img(this, 1006, 46, 'portrait_ring', 0.66).setDepth(D);
-    img(this, 1005, 66, 'hero_head', 0.8).setDepth(D);
-    nine(this, 1196, 92, 'pill', 132, 40, 18).setDepth(D);
-    img(this, 1240, 92, 'ic_helmet', 0.5).setDepth(D);
-    this.allyT = txt(this, 1218, 92, '', 20, C.cream, { ox: 1, weight: '900' }).setDepth(D);
-    nine(this, 1196, 138, 'pill', 132, 40, 18).setDepth(D);
-    img(this, 1240, 138, 'ic_boss', 0.5).setDepth(D);
-    this.enemyT = txt(this, 1218, 138, '', 20, '#ff9a88', { ox: 1, weight: '900' }).setDepth(D);
+    img(this, R(1006), 46, 'portrait_ring', 0.66).setDepth(D);
+    img(this, R(1005), 66, 'hero_head', 0.8).setDepth(D);
+    nine(this, R(1196), 92, 'pill', 132, 40, 18).setDepth(D);
+    img(this, R(1240), 92, 'ic_helmet', 0.5).setDepth(D);
+    this.allyT = txt(this, R(1218), 92, '', 20, C.cream, { ox: 1, weight: '900' }).setDepth(D);
+    nine(this, R(1196), 138, 'pill', 132, 40, 18).setDepth(D);
+    img(this, R(1240), 138, 'ic_boss', 0.5).setDepth(D);
+    this.enemyT = txt(this, R(1218), 138, '', 20, '#ff9a88', { ox: 1, weight: '900' }).setDepth(D);
     // בוס
     this.bossUi = this.add.container(W / 2, 0).setDepth(D).setVisible(false);
     if (boss) {
@@ -188,7 +205,8 @@ export class BattleScene extends Phaser.Scene {
     }
     // תנועה
     const mv = (x: number, icon: string, set: (v: boolean) => void) => {
-      const c = this.add.container(x, 632).setDepth(D);
+      const c = this.add.container(x, 640).setDepth(D);
+      this.hudBtns.push({ c, x, y: 640 });
       c.add(img(this, 0, 0, 'round_dark', 1.12).setAlpha(0.9));
       c.add(img(this, 0, 0, icon, 1.2));
       c.setSize(124, 124).setInteractive();
@@ -203,22 +221,25 @@ export class BattleScene extends Phaser.Scene {
       c.on('pointerup', off);
       c.on('pointerout', off);
     };
-    mv(84, 'ic_left', (v) => (this.moveL = v));
-    mv(218, 'ic_right', (v) => (this.moveR = v));
+    mv(L(84), 'ic_left', (v) => (this.moveL = v));
+    mv(L(218), 'ic_right', (v) => (this.moveR = v));
     // כישורים ושיקוי
     this.cdG = this.add.graphics().setDepth(D + 1);
     const keys = ['round_orange', 'round_blue', 'round_teal'];
+    // כפתורי הכישורים והשיקוי קטנים ב-15% ומעוגנים לפינה הימנית
     for (let i = 0; i < 3; i++) {
-      const x = 866 + i * 118;
+      const x = R(1132 - (2 - i) * 100);
       this.skillPos.length = 3;
-      this.skillPos[i] = [x, 640];
-      const b = roundBtn(this, x, 640, keys[i], `ic_skill${i}`, 108, () => this.skill(i)).setDepth(D);
-      void b;
-      this.cdT[i] = txt(this, x, 640, '', 34, C.cream, { weight: '900' }).setDepth(D + 2);
+      this.skillPos[i] = [x, 656];
+      const b = roundBtn(this, x, 656, keys[i], `ic_skill${i}`, 92, () => this.skill(i)).setDepth(D);
+      this.hudBtns.push({ c: b, x, y: 656 });
+      this.cdT[i] = txt(this, x, 656, '', 29, C.cream, { weight: '900' }).setDepth(D + 2);
     }
-    roundBtn(this, 1214, 646, 'round_dark', 'ic_potion', 96, () => this.potion()).setDepth(D);
-    img(this, 1250, 610, 'round_red', 0.36).setDepth(D + 1);
-    this.potT = txt(this, 1250, 609, '', 20, C.cream, { weight: '900' }).setDepth(D + 2);
+    const px = R(1228);
+    const pot = roundBtn(this, px, 660, 'round_dark', 'ic_potion', 82, () => this.potion()).setDepth(D);
+    this.hudBtns.push({ c: pot, x: px, y: 660 });
+    img(this, px + 30, 630, 'round_red', 0.32).setDepth(D + 1);
+    this.potT = txt(this, px + 30, 629, '', 18, C.cream, { weight: '900' }).setDepth(D + 2);
     versionLabel(this);
   }
 
@@ -273,13 +294,15 @@ export class BattleScene extends Phaser.Scene {
 
   private onScreen(wx: number) {
     const x = wx - this.camX;
-    return x > -80 && x < W + 80;
+    return x > -V.ex - 80 && x < W + V.ex + 80;
   }
 
   private getPuppet(e: Ent): Puppet {
     let p = this.pool.pop();
-    if (p) p.setChar(e.kind).setVisible(true).setActive(true);
-    else p = new Puppet(this, e.kind);
+    // הגיבור גדול מעט יותר כדי שתמיד יהיה קל למצוא אותו
+    const k = e.hero ? HERO_SCALE : e.boss ? 1 : UNIT_SCALE;
+    if (p) p.setChar(e.kind, k).setVisible(true).setActive(true);
+    else p = new Puppet(this, e.kind).setChar(e.kind, k);
     p.face(e.face);
     this.puppets.set(e.id, p);
     return p;
@@ -319,14 +342,15 @@ export class BattleScene extends Phaser.Scene {
         p?.flash();
         if (!this.onScreen(e.e.x)) break;
         const y = yOf(e.e);
-        const hh = 60 * (p?.def.scale ?? 1);
-        // מספרי הנזק מצטברים לכל דמות כדי שלא יציפו את המסך
+        const hh = 60 * (p?.baseScale ?? 1);
+        // פגיעות באותה דמות בתוך 250 אלפיות שנייה מתאחדות למספר אחד
+        const strong = e.big || e.hero;
         const acc = this.dmgAcc.get(e.e.id);
         if (acc) {
           acc.sum += e.dmg;
-          acc.big = acc.big || e.big;
+          acc.big = acc.big || strong;
         } else {
-          this.dmgAcc.set(e.e.id, { e: e.e, sum: e.dmg, big: e.big, t: this.time0, h: hh });
+          this.dmgAcc.set(e.e.id, { e: e.e, sum: e.dmg, big: strong, t: this.time0, h: hh });
           this.spawnFx('spark', e.e.x + (Math.random() - 0.5) * 20, y - hh * 0.6, { life: 0.2, s0: 0.5, s1: e.big ? 1.6 : 1.0, rot: Math.random() * 3 });
         }
         audio.play('hit');
@@ -337,7 +361,7 @@ export class BattleScene extends Phaser.Scene {
         if (!this.onScreen(e.e.x)) break;
         const y = yOf(e.e);
         for (let i = 0; i < 3; i++) this.spawnFx('healfx', e.e.x + (Math.random() - 0.5) * 36, y - 20 - Math.random() * 40, { life: 0.7, vy: -50, s0: 0.5, s1: 0.9 });
-        this.num(e.e.x, y - 80, '+' + e.amt, 0x7dfa9a, 0.58);
+        this.num(e.e.x, y - 80, '+' + e.amt, 0x7dfa9a, 0.44);
         break;
       }
       case 'die': {
@@ -369,15 +393,15 @@ export class BattleScene extends Phaser.Scene {
         break;
       }
       case 'telegraph': {
-        const im = img(this, 0, 572, 'ringflat', 1).setTint(0xff3a2a).setDepth(7);
+        const im = img(this, 0, (Y0 + Y1) / 2 + 6, 'ringflat', 1).setTint(0xff3a2a).setDepth(7);
         this.tele.push({ im, wx: e.x, t: 0, dur: e.dur, r: e.r });
         break;
       }
       case 'blast': {
         audio.play('blast');
         this.cameras.main.shake(260, 0.012);
-        this.spawnFx('glow', e.x, 540, { life: 0.45, s0: 2, s1: 9, tint: 0xff7a2a });
-        for (let i = 0; i < 10; i++) this.spawnFx('spark', e.x + (Math.random() - 0.5) * e.r * 2, 500 + Math.random() * 130, { life: 0.5, s0: 0.8, s1: 2.2, vy: -80, rot: Math.random() * 3 });
+        this.spawnFx('glow', e.x, (Y0 + Y1) / 2, { life: 0.45, s0: 2, s1: 9, tint: 0xff7a2a });
+        for (let i = 0; i < 10; i++) this.spawnFx('spark', e.x + (Math.random() - 0.5) * e.r * 2, Y0 - 20 + Math.random() * (Y1 - Y0), { life: 0.5, s0: 0.8, s1: 2.2, vy: -80, rot: Math.random() * 3 });
         break;
       }
       case 'wave':
@@ -438,7 +462,14 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private num(wx: number, y: number, s: string, tint: number, scale: number) {
-    if (this.nums.length > 26) return;
+    // לכל היותר 12 מספרים על המסך: הוותיקים דועכים ראשונים
+    const over = this.nums.length - (MAX_NUMS - 1);
+    for (let i = 0; i < over; i++) this.nums[i].life = Math.max(this.nums[i].life, 0.62);
+    if (this.nums.length >= MAX_NUMS) {
+      const old = this.nums.shift()!;
+      old.bt.setVisible(false);
+      this.numPool.push(old.bt);
+    }
     const bt = this.numPool.pop() ?? this.add.bitmapText(0, 0, 'digits', '').setOrigin(0.5).setDepth(850);
     bt.setText(s).setTint(tint).setScale(scale).setVisible(true).setAlpha(1);
     this.nums.push({ bt, wx: wx + (Math.random() - 0.5) * 24, y, life: 0 });
@@ -447,9 +478,16 @@ export class BattleScene extends Phaser.Scene {
   private syncPuppets(dt: number) {
     const sim = this.sim;
     const h = sim.hero;
-    const target = Phaser.Math.Clamp(h.x - W * 0.42, 0, FIELD_W - W);
-    this.camX += (target - this.camX) * Math.min(1, dt * 5 + (dt === 0 ? 1 : 0));
-    this.scenery.setScroll(this.camX);
+    // המצלמה עוקבת בעדינות אחרי נקודה בין הגיבור לקו החזית, בתוך גבולות השדה,
+    // כך שההתנגשות תמיד נראית במלואה סביב מרכז המסך
+    const focus = (h.x + sim.clashX()) / 2;
+    let left = focus - V.w / 2;
+    left = Math.min(left, h.x - V.w * 0.16);
+    left = Math.max(left, h.x - V.w * 0.84);
+    left = Phaser.Math.Clamp(left, 0, FIELD_W - V.w);
+    const target = left + V.ex;
+    this.camX += (target - this.camX) * (dt === 0 ? 1 : Math.min(1, dt * 3.2));
+    this.scenery.setScroll(this.camX - V.ex);
     const g = this.hpG;
     g.clear();
     for (const e of sim.ents) {
@@ -457,26 +495,43 @@ export class BattleScene extends Phaser.Scene {
       const p = this.puppets.get(e.id);
       if (!p) continue;
       const x = e.x - this.camX;
-      const vis = x > -160 && x < W + 160;
+      const vis = x > -V.ex - 160 && x < W + V.ex + 160;
       p.setVisible(vis);
       if (!vis) continue;
       const y = yOf(e);
       p.setPosition(x, y);
-      p.setDepth(y + (e.hero ? 0.5 : 0));
+      // סדר ציור לפי גובה על המסך; הגיבור תמיד מעל שאר החיילים
+      p.setDepth(e.hero ? 700 : y);
       p.moving = e.moving;
       if (p.facing !== e.face) p.face(e.face);
       p.tick(dt);
       if (e.invuln > 0) p.setAlpha(0.6 + Math.sin(this.time0 * 30) * 0.3);
       else if (p.alpha !== 1 && p.dying < 0) p.setAlpha(1);
       if (!e.boss && (e.hp < e.maxHp || e.hero)) {
-        const bw = e.hero ? 56 : e.big ? 50 : 34;
-        const by = y - 84 * p.def.scale - 8;
-        g.fillStyle(0x2b1a10, 0.9).fillRect(x - bw / 2 - 1.5, by - 1.5, bw + 3, 8);
-        g.fillStyle(e.hero ? 0x4fd6ff : e.side === 0 ? 0x6fd04a : 0xe0342c, 1).fillRect(x - bw / 2, by, bw * Math.max(0, e.hp / e.maxHp), 5);
+        const bw = e.hero ? 74 : e.big ? 50 : 34;
+        const bh = e.hero ? 8 : 5;
+        const by = y - 84 * p.baseScale - (e.hero ? 14 : 8);
+        g.fillStyle(0x2b1a10, 0.9).fillRect(x - bw / 2 - 1.5, by - 1.5, bw + 3, bh + 3);
+        g.fillStyle(e.hero ? 0x4fd6ff : e.side === 0 ? 0x6fd04a : 0xe0342c, 1).fillRect(x - bw / 2, by, bw * Math.max(0, e.hp / e.maxHp), bh);
       }
     }
     // קריאת קרב - הילה מתחת לגיבור
     this.buffGlow.setAlpha(sim.buff > 0 ? 0.35 + Math.sin(this.time0 * 8) * 0.12 : 0).setPosition(h.x - this.camX, yOf(h) - 10);
+    // טבעת זוהרת מתחת לרגלי הגיבור
+    this.heroRing.setPosition(h.x - this.camX, yOf(h) - 2).setAlpha(0.6 + Math.sin(this.time0 * 4) * 0.25);
+    // כפתורים נעשים שקופים מעט כשיש חיילים מאחוריהם
+    for (const b of this.hudBtns) {
+      let covered = false;
+      for (const e of sim.ents) {
+        if (e.dead) continue;
+        const ex = e.x - this.camX;
+        if (ex > b.x - 64 && ex < b.x + 64 && yOf(e) > b.y - 118) {
+          covered = true;
+          break;
+        }
+      }
+      b.c.setAlpha(covered ? 0.62 : 1);
+    }
     for (let i = this.dying.length - 1; i >= 0; i--) {
       const d = this.dying[i];
       d.p.x = d.wx - this.camX;
@@ -491,9 +546,10 @@ export class BattleScene extends Phaser.Scene {
 
   private tickFx(dt: number) {
     for (const [id, a] of this.dmgAcc) {
-      if (this.time0 - a.t < 0.16 && !this.ended) continue;
+      if (this.time0 - a.t < 0.25 && !this.ended) continue;
       this.dmgAcc.delete(id);
-      if (this.onScreen(a.e.x)) this.num(a.e.x, yOf(a.e) - a.h, String(a.sum), a.e.side === 0 ? 0xff6a55 : a.big ? 0xffd23e : 0xffffff, a.big ? 0.8 : 0.58);
+      // פגיעה רגילה קטנה; פגיעה חזקה או של הגיבור - גדולה וצהובה
+      if (this.onScreen(a.e.x)) this.num(a.e.x, yOf(a.e) - a.h, String(a.sum), a.e.side === 0 ? 0xff6a55 : a.big ? 0xffd23e : 0xffffff, a.e.side === 1 && a.big ? 0.74 : a.e.hero ? 0.6 : 0.44);
     }
     for (let i = this.fx.length - 1; i >= 0; i--) {
       const f = this.fx[i];
@@ -533,14 +589,14 @@ export class BattleScene extends Phaser.Scene {
     for (let i = this.nums.length - 1; i >= 0; i--) {
       const n = this.nums[i];
       n.life += dt;
-      if (n.life > 0.7) {
+      if (n.life > 0.85) {
         n.bt.setVisible(false);
         this.numPool.push(n.bt);
         this.nums.splice(i, 1);
         continue;
       }
-      n.bt.setPosition(n.wx - this.camX, n.y - n.life * 70);
-      n.bt.setAlpha(n.life < 0.45 ? 1 : 1 - (n.life - 0.45) / 0.25);
+      n.bt.setPosition(n.wx - this.camX, n.y - n.life * 64);
+      n.bt.setAlpha(n.life < 0.6 ? 1 : Math.max(0, 1 - (n.life - 0.6) / 0.25));
     }
     for (let i = this.tele.length - 1; i >= 0; i--) {
       const t = this.tele[i];
@@ -551,7 +607,7 @@ export class BattleScene extends Phaser.Scene {
         continue;
       }
       const k = t.t / t.dur;
-      t.im.setPosition(t.wx - this.camX, 572);
+      t.im.setPosition(t.wx - this.camX, (Y0 + Y1) / 2 + 6);
       t.im.setScale(((t.r / 48) * (0.4 + 0.6 * k)) / 2, (2.4 * (0.4 + 0.6 * k)) / 2);
       t.im.setAlpha(0.35 + 0.5 * Math.abs(Math.sin(t.t * 14)));
     }
@@ -573,14 +629,14 @@ export class BattleScene extends Phaser.Scene {
       const [x, y] = this.skillPos[i];
       if (cd > 0) {
         g.fillStyle(0x1c1008, 0.72);
-        g.slice(x, y, 38, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (cd / SKILL_CD[i]), false);
+        g.slice(x, y, 32, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (cd / SKILL_CD[i]), false);
         g.fillPath();
         this.cdT[i].setText(String(Math.ceil(cd)));
       } else this.cdT[i].setText('');
       // טבעת טעינה
       g.lineStyle(5, cd > 0 ? 0x7a6a55 : 0xfff3b0, cd > 0 ? 0.9 : 0.0);
       g.beginPath();
-      g.arc(x, y, 49, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - cd / SKILL_CD[i]), false);
+      g.arc(x, y, 42, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - cd / SKILL_CD[i]), false);
       g.strokePath();
     }
   }
@@ -631,7 +687,7 @@ export class BattleScene extends Phaser.Scene {
     audio.play(win ? 'victory' : 'defeat');
     audio.setMode('camp');
     const layer = this.add.container(0, 0).setDepth(1000);
-    layer.add(this.add.rectangle(W / 2, H / 2, W * 2, H * 2, 0x120a05, 0.6).setInteractive());
+    layer.add(this.add.rectangle(W / 2, H / 2, W * 3, H * 2, 0x120a05, 0.6).setInteractive());
     const c = this.add.container(W / 2, 0);
     layer.add(c);
     const ban = this.add.container(0, 70);
@@ -664,7 +720,7 @@ export class BattleScene extends Phaser.Scene {
       }
       // קונפטי
       const cols = [0xffd23e, 0xff6a55, 0x7fd4ff, 0x8ff06a, 0xff8fd0];
-      for (let i = 0; i < 70; i++) this.spawnFx('confetti', Math.random() * W, -20 - Math.random() * 200, { life: 2.6 + Math.random(), vy: 140 + Math.random() * 140, vx: (Math.random() - 0.5) * 80, s0: 1.4, s1: 1.4, spin: (Math.random() - 0.5) * 16, tint: cols[i % 5], screen: true });
+      for (let i = 0; i < 70; i++) this.spawnFx('confetti', Math.random() * V.w - V.ex, -20 - Math.random() * 200, { life: 2.6 + Math.random(), vy: 140 + Math.random() * 140, vx: (Math.random() - 0.5) * 80, s0: 1.4, s1: 1.4, spin: (Math.random() - 0.5) * 16, tint: cols[i % 5], screen: true });
       c.add(txt(this, 0, 322, 'פרסים', 30, C.gold, { weight: '900', sw: 6 }));
       const tiles: { icon?: string; label: string; color: string; item?: boolean }[] = [
         { icon: 'coin', label: fmt(sum.rewards.gold), color: C.gold },

@@ -1,9 +1,16 @@
 // סימולציית הקרב - לוגיקה טהורה ללא תלות בתצוגה.
 // הסצנה קוראת ל-step() ומציירת לפי הישויות והאירועים.
-import { type EnemyId, type LevelDef, type Role, type UnitId, ENEMIES, UNITS, UNIT_IDS, BOSS_SPECIAL, SKILL_CD } from './data';
+import { type EnemyId, type LevelDef, type Role, type UnitId, ENEMIES, UNITS, FORMATION_ORDER, HEAL_TARGETS, BOSS_SPECIAL, SKILL_CD } from './data';
 import { type HeroStats, type Rng, unitMult, skillPower } from './economy';
 
-export const FIELD_W = 1900;
+/** רוחב שדה הקרב - רחב בהרבה מהמסך, המצלמה עוקבת אחרי הקרב */
+export const FIELD_W = 3200;
+/** שלושה נתיבי עומק על רצועת הקרקע */
+export const LANES = [0.18, 0.5, 0.82];
+/** גובה רצועת הקרקע ביחידות מרחק (להמרת y למרחק) */
+const BAND = 150;
+const HERO_MAX_X = FIELD_W - 260;
+const SPAWN_MAX_X = FIELD_W - 720;
 
 export interface Ent {
   id: number;
@@ -35,12 +42,14 @@ export interface Ent {
   special: number;
   invuln: number;
   unitId: UnitId | null;
+  /** רדיוס הגוף, למרווח בין חיילים */
+  r: number;
 }
 
 export type SimEvent =
   | { t: 'spawn'; e: Ent }
   | { t: 'attack'; e: Ent }
-  | { t: 'hit'; e: Ent; dmg: number; big: boolean }
+  | { t: 'hit'; e: Ent; dmg: number; big: boolean; hero: boolean }
   | { t: 'heal'; e: Ent; amt: number }
   | { t: 'die'; e: Ent }
   | { t: 'shot'; kind: 'arrow' | 'bolt' | 'darrow' | 'heal'; x0: number; y0: number; x1: number; y1: number; dur: number; side: 0 | 1 }
@@ -151,6 +160,7 @@ export class BattleSim {
       special: 5,
       invuln: 0,
       unitId: null,
+      r: 18,
     };
     this.ents.push(e);
     return e;
@@ -158,38 +168,49 @@ export class BattleSim {
 
   private spawnArmy() {
     const h = this.cfg.hero;
-    this.hero = this.mk(0, 'hero', 'hero', 450, 0.5, h.hp, h.atk, h.def, 78, this.heroSpeed, this.heroCd);
+    // מערך: לכל חייל משבצת משלו - 3 נתיבי עומק ושורות זו מאחורי זו.
+    // מהחזית לאחור: גיבור, ענקים, נושאי חנית, חרבנים, סמוראים, קשתים וקוסמים, מרפאות.
+    const list: UnitId[] = [];
+    for (const id of FORMATION_ORDER) {
+      const a = this.cfg.army[id];
+      if (!a || a.count <= 0) continue;
+      this.sent[id] = a.count;
+      for (let i = 0; i < a.count; i++) list.push(id);
+    }
+    const rows = Math.ceil(list.length / LANES.length);
+    const gap = Math.max(34, Math.min(58, 1400 / Math.max(1, rows)));
+    let len = 0;
+    const rowX: number[] = [];
+    let prevRole: Role | null = null;
+    for (let r = 0; r < rows; r++) {
+      const d = UNITS[list[r * LANES.length]];
+      if (prevRole && prevRole !== d.role) len += 26;
+      prevRole = d.role;
+      len += d.big ? gap * 1.35 : gap;
+      rowX.push(len);
+    }
+    const front = Math.max(700, 70 + len);
+    this.hero = this.mk(0, 'hero', 'hero', front + 34, 0.5, h.hp, h.atk, h.def, 78, this.heroSpeed, this.heroCd);
     this.hero.hero = true;
     this.hero.speed = this.heroSpeed;
     this.hero.timer = 0;
-    // מערך: קרב פנים מלפנים, יורים מאחור, מרפאות בסוף
-    const cols: Record<string, { x: number; n: number }> = {
-      melee: { x: 480, n: 0 },
-      ranged: { x: 300, n: 0 },
-      healer: { x: 150, n: 0 },
-    };
-    const rows = 7;
-    for (const id of UNIT_IDS) {
-      const a = this.cfg.army[id];
-      if (!a || a.count <= 0) continue;
+    this.hero.r = 22;
+    list.forEach((id, i) => {
       const d = UNITS[id];
+      const a = this.cfg.army[id]!;
       const m = unitMult(a.lvl);
-      this.sent[id] = a.count;
-      const grp = d.role === 'melee' ? cols.melee : d.role === 'healer' ? cols.healer : cols.ranged;
-      for (let i = 0; i < a.count; i++) {
-        const row = grp.n % rows;
-        const col = Math.floor(grp.n / rows);
-        grp.n++;
-        const x = grp.x - col * 44 + (row % 2) * 20;
-        const y = (row + 0.5) / rows + (this.rng() - 0.5) * 0.08;
-        const e = this.mk(0, id, d.role, Math.max(30, x), Math.min(0.98, Math.max(0.02, y)), d.hp * m, d.atk * m, d.def * m, d.range, d.speed, d.cd);
-        e.unitId = id;
-        e.big = !!d.big;
-        e.splash = d.splash ?? 0;
-        e.knock = d.knock ?? 0;
-        e.bonusBig = d.bonusBig ?? 1;
-      }
-    }
+      const row = Math.floor(i / LANES.length);
+      const lane = i % LANES.length;
+      const x = front - rowX[row] + (this.rng() - 0.5) * 12 + (lane === 1 ? 10 : 0);
+      const y = LANES[lane] + (this.rng() - 0.5) * 0.1;
+      const e = this.mk(0, id, d.role, Math.max(30, x), y, d.hp * m, d.atk * m, d.def * m, d.range, d.speed, d.cd);
+      e.unitId = id;
+      e.big = !!d.big;
+      e.r = d.big ? 28 : 18;
+      e.splash = d.splash ?? 0;
+      e.knock = d.knock ?? 0;
+      e.bonusBig = d.bonusBig ?? 1;
+    });
     for (const e of this.ents) this.events.push({ t: 'spawn', e });
   }
 
@@ -199,6 +220,7 @@ export class BattleSim {
     const e = this.mk(1, kind, d.role, x, y, d.hp * lv.mult, d.atk * lv.atkMult, d.def * (1 + (lv.mult - 1) * 0.3), d.range, d.speed, d.cd);
     e.big = !!d.big;
     e.knock = d.knock ?? 0;
+    e.r = d.role === 'boss' ? 46 : d.big ? 28 : kind === 'imp' ? 15 : 18;
     if (d.role === 'boss') {
       e.boss = true;
       this.bossEnt = e;
@@ -217,14 +239,17 @@ export class BattleSim {
     // סדר: מהירים מלפנים, יורים מאחור, בוס בסוף
     const order = (k: EnemyId) => (ENEMIES[k].role === 'boss' ? 3 : ENEMIES[k].role === 'ranged' ? 2 : k === 'brute' ? 1 : 0);
     list.sort((a, b) => order(a) - order(b));
-    // האויבים מופיעים מעט מחוץ למסך מימין
-    const base = Math.max(FIELD_W - 520, Math.min(FIELD_W - 60, Math.max(this.hero.x + 880, this.frontX(0) + 700)));
-    list.forEach((k, i) => {
+    // האויבים מופיעים מחוץ למסך מימין, בתוך גבולות השדה, בשלושה נתיבים
+    const base = Math.min(SPAWN_MAX_X, Math.max(this.hero.x, this.frontX(0)) + 960);
+    let n = 0;
+    for (const k of list) {
+      const boss = ENEMIES[k].role === 'boss';
       // הבוס מגיע אחרי המלווים שלו
-      const x = base + 40 + Math.floor(i / 5) * 46 + this.rng() * 30 + (ENEMIES[k].role === 'boss' ? 260 : 0);
-      const y = ENEMIES[k].role === 'boss' ? 0.5 : ((i % 5) + 0.5) / 5 + (this.rng() - 0.5) * 0.12;
-      this.spawnEnemy(k, x, Math.min(0.98, Math.max(0.02, y)));
-    });
+      const x = base + Math.floor(n / LANES.length) * 54 + this.rng() * 24 + (boss ? 240 : 0);
+      const y = boss ? 0.5 : LANES[n % LANES.length] + (this.rng() - 0.5) * 0.14;
+      if (!boss) n++;
+      this.spawnEnemy(k, Math.min(FIELD_W - 50, x), Math.min(0.97, Math.max(0.03, y)));
+    }
   }
 
   private frontX(side: 0 | 1): number {
@@ -254,7 +279,8 @@ export class BattleSim {
     let bd = 1e9;
     for (const o of this.ents) {
       if (o.dead || o.side === e.side) continue;
-      const d = Math.abs(o.x - e.x) + Math.abs(o.y - e.y) * 30;
+      // העדפה לאויב באותו נתיב
+      const d = Math.abs(o.x - e.x) + Math.abs(o.y - e.y) * 90;
       if (d < bd) {
         bd = d;
         best = o;
@@ -270,10 +296,10 @@ export class BattleSim {
     if (tgt.big && src.bonusBig > 1) d *= src.bonusBig;
     d = Math.max(1, (d * 100) / (100 + tgt.def));
     tgt.hp -= d;
-    this.events.push({ t: 'hit', e: tgt, dmg: Math.round(d), big });
+    this.events.push({ t: 'hit', e: tgt, dmg: Math.round(d), big, hero: src.hero });
     if (src.knock > 0 && !tgt.boss && !tgt.hero) {
       tgt.x += (src.side === 0 ? 1 : -1) * src.knock * (tgt.big ? 0.4 : 1);
-      tgt.x = Math.max(20, Math.min(FIELD_W + 300, tgt.x));
+      tgt.x = Math.max(20, Math.min(FIELD_W - 30, tgt.x));
     }
     if (tgt.hp <= 0) this.kill(tgt);
   }
@@ -313,7 +339,7 @@ export class BattleSim {
         if (o.dead || o.side !== 1) continue;
         if (Math.abs(o.x - h.x) <= 170) {
           this.dmg(h, o, h.atk * 2.6 * p, true);
-          if (!o.boss && !o.dead) o.x += (o.x >= h.x ? 1 : -1) * 45;
+          if (!o.boss && !o.dead) o.x = Math.max(20, Math.min(FIELD_W - 30, o.x + (o.x >= h.x ? 1 : -1) * 45));
         }
       }
     } else if (i === 1) {
@@ -354,7 +380,7 @@ export class BattleSim {
     const h = this.hero;
     h.hp = h.maxHp * 0.6;
     h.invuln = 2.5;
-    for (const o of this.ents) if (!o.dead && o.side === 1 && !o.boss && Math.abs(o.x - h.x) < 200) o.x += 120;
+    for (const o of this.ents) if (!o.dead && o.side === 1 && !o.boss && Math.abs(o.x - h.x) < 200) o.x = Math.min(FIELD_W - 30, o.x + 120);
     this.events.push({ t: 'revive' });
   }
 
@@ -409,6 +435,8 @@ export class BattleSim {
       if (this.state !== 'run') break;
     }
 
+    this.separate(dt);
+
     // קליעים
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const s = this.shots[i];
@@ -438,7 +466,7 @@ export class BattleSim {
           if (o.invuln > 0) continue;
           const d = Math.max(1, (t.dmg * (o.hero ? 1 : 0.5) * 100) / (100 + o.def));
           o.hp -= d;
-          this.events.push({ t: 'hit', e: o, dmg: Math.round(d), big: true });
+          this.events.push({ t: 'hit', e: o, dmg: Math.round(d), big: true, hero: false });
           if (o.hp <= 0) this.kill(o);
         }
       }
@@ -471,7 +499,7 @@ export class BattleSim {
   private stepHero(e: Ent, dt: number) {
     e.moving = false;
     if (this.heroMove !== 0) {
-      e.x = Math.max(40, Math.min(FIELD_W - 190, e.x + this.heroMove * e.speed * dt));
+      e.x = Math.max(40, Math.min(HERO_MAX_X, e.x + this.heroMove * e.speed * dt));
       e.face = this.heroMove > 0 ? 1 : -1;
       e.moving = true;
     }
@@ -501,7 +529,7 @@ export class BattleSim {
     }
     // התחמקות מהתקפת אזור
     for (const tl of this.tele) {
-      if (Math.abs(h.x - tl.x) < tl.r + 25) this.heroMove = h.x >= tl.x && h.x < FIELD_W - 260 ? 1 : -1;
+      if (Math.abs(h.x - tl.x) < tl.r + 25) this.heroMove = h.x >= tl.x && h.x < HERO_MAX_X - 60 ? 1 : -1;
     }
     if (h.hp < h.maxHp * 0.6) this.useSkill(2);
     if (h.hp < h.maxHp * 0.4) this.usePotion();
@@ -513,12 +541,12 @@ export class BattleSim {
     return best || this.hero.x;
   }
 
-  private healTarget(e: Ent): Ent | null {
+  private healTarget(e: Ent, skip: Ent | null = null): Ent | null {
     let best: Ent | null = null;
     let br = 0.92;
     for (const o of this.ents) {
-      if (o.dead || o.side !== e.side || o === e) continue;
-      if (Math.abs(o.x - e.x) > e.range + 120) continue;
+      if (o.dead || o.side !== e.side || o === e || o === skip) continue;
+      if (Math.abs(o.x - e.x) > e.range + (skip ? 0 : 120)) continue;
       const r = o.hp / o.maxHp;
       if (r < br) {
         br = r;
@@ -538,8 +566,13 @@ export class BattleSim {
           e.timer = e.cd;
           e.face = t.x >= e.x ? 1 : -1;
           this.events.push({ t: 'attack', e });
-          this.events.push({ t: 'shot', kind: 'heal', x0: e.x, y0: e.y, x1: t.x, y1: t.y, dur: 0.3, side: e.side });
-          this.heal(t, e.atk);
+          // מרפאת עד שני חיילים בבת אחת
+          let cur: Ent | null = t;
+          for (let i = 0; i < HEAL_TARGETS && cur; i++) {
+            this.events.push({ t: 'shot', kind: 'heal', x0: e.x, y0: e.y, x1: cur.x, y1: cur.y, dur: 0.3, side: e.side });
+            this.heal(cur, e.atk);
+            cur = i === 0 ? this.healTarget(e, t) : null;
+          }
         }
         return;
       }
@@ -550,12 +583,68 @@ export class BattleSim {
     }
     // ללא פצועים - נשארת מאחורי החזית
     const front = this.frontAllies();
-    const goal = front - 170;
-    if (Math.abs(goal - e.x) > 30) {
+    const goal = front - 230;
+    if (Math.abs(goal - e.x) > 40) {
       e.x += Math.sign(goal - e.x) * e.speed * dt;
       e.face = goal >= e.x ? 1 : -1;
       e.moving = true;
     } else e.face = 1;
+  }
+
+  /** מרווח מינימלי בין חיילים מאותו צד, כדי שלא ייערמו זה על זה */
+  private separate(dt: number) {
+    const list = this.ents;
+    const n = list.length;
+    const k = Math.min(1, dt * 9);
+    for (let i = 0; i < n; i++) {
+      const a = list[i];
+      if (a.dead || a.boss) continue;
+      for (let j = i + 1; j < n; j++) {
+        const b = list[j];
+        if (b.dead || b.boss || b.side !== a.side) continue;
+        const dx = a.x - b.x;
+        const rx = a.r + b.r;
+        if (dx > rx || dx < -rx) continue;
+        const ry = rx * 0.55;
+        const dy = (a.y - b.y) * BAND;
+        if (dy > ry || dy < -ry) continue;
+        const nx = dx / rx;
+        const ny = dy / ry;
+        const d2 = nx * nx + ny * ny;
+        if (d2 >= 1) continue;
+        const d = Math.sqrt(d2) || 0.001;
+        const push = (1 - d) * k * 0.5;
+        // אם שניהם בדיוק באותה נקודה - דוחפים לפי המזהה
+        const ux = d2 < 1e-6 ? (a.id < b.id ? -1 : 1) : nx / d;
+        const uy = d2 < 1e-6 ? (a.id % 2 ? 1 : -1) : ny / d;
+        const px = ux * push * rx;
+        const py = (uy * push * ry) / BAND;
+        if (!a.hero) {
+          a.x += px * (a.swing >= 0 ? 0.3 : 1);
+          a.y += py;
+        }
+        if (!b.hero) {
+          b.x -= px * (b.swing >= 0 ? 0.3 : 1);
+          b.y -= py;
+        }
+      }
+    }
+    for (const e of list) {
+      if (e.dead) continue;
+      if (e.y < 0.03) e.y = 0.03;
+      else if (e.y > 0.97) e.y = 0.97;
+      if (e.x < 20) e.x = 20;
+      else if (e.x > FIELD_W - 30) e.x = FIELD_W - 30;
+    }
+  }
+
+  /** מרכז הקרב: בין חזית הצבא לאויב הקרוב - המצלמה מתמקדת בו */
+  clashX(): number {
+    const front = Math.max(this.hero.x, this.frontAllies());
+    let enemy = Infinity;
+    for (const e of this.ents) if (!e.dead && e.side === 1 && e.x < enemy) enemy = e.x;
+    if (enemy === Infinity || enemy - front > 900) return front + 160;
+    return (front + enemy) / 2;
   }
 
   private stepUnit(e: Ent, dt: number) {
@@ -565,7 +654,7 @@ export class BattleSim {
     if (!t || t.dead) {
       // אין אויב: צבא השחקן מתקבץ ליד הגיבור
       if (e.side === 0) {
-        const goal = this.hero.x + (e.role === 'melee' ? 40 : -110);
+        const goal = this.hero.x + (e.role === 'melee' ? -30 : -190);
         if (Math.abs(goal - e.x) > 90) {
           e.x += Math.sign(goal - e.x) * e.speed * dt;
           e.face = goal >= e.x ? 1 : -1;
@@ -591,10 +680,15 @@ export class BattleSim {
           e.swing = e.boss ? 0.35 : 0.16;
         }
       }
+      // לוחמי קרב פנים נפרסים לאורך החזית אל מול היריב שלהם
+      if (e.role === 'melee' && !t.boss) {
+        const dy = t.y - e.y;
+        if (dy > 0.04 || dy < -0.04) e.y += Math.sign(dy) * Math.min(Math.abs(dy), 0.35 * dt);
+      }
       // יורים שומרים מרחק
       if ((e.role === 'ranged' || e.role === 'mage') && d < e.range * 0.33) {
         const nx = e.x - toward * e.speed * 0.55 * dt;
-        if (nx > 30 && nx < FIELD_W + 200) {
+        if (nx > 30 && nx < FIELD_W - 30) {
           e.x = nx;
           e.moving = true;
         }

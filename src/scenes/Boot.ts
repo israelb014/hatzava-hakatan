@@ -2,9 +2,8 @@ import Phaser from 'phaser';
 import { buildAtlas, buildTexture } from '../art/svg';
 import { charSprites } from '../art/chars';
 import { uiSprites } from '../art/uikit';
-import { regionArt, interiorArt, mapArt, BG_W, MAP_REGION_W } from '../art/bg';
+import { regionArt, interiorArt, mapArt, BG_W, MAP_REGION_W, INTERIOR_W, SKY_COLORS, SKY_BOSS } from '../art/bg';
 
-export const REGION_SKY: [number, number][] = [];
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -25,18 +24,33 @@ export class BootScene extends Phaser.Scene {
     const step = () => prog(0.7 + (++done / 17) * 0.3);
     for (let r = 0; r < 4; r++) {
       const a = regionArt(r);
-      REGION_SKY[r] = a.sky;
       jobs.push(buildTexture(this, `far${r}`, BG_W, a.farH, a.far).then(step));
       jobs.push(buildTexture(this, `mid${r}`, BG_W, a.midH, a.mid).then(step));
       jobs.push(buildTexture(this, `ground${r}`, BG_W, a.groundH, a.ground).then(step));
       jobs.push(buildTexture(this, `map${r}`, MAP_REGION_W, 720, mapArt(r)).then(step));
     }
-    jobs.push(buildTexture(this, 'interior', 1280, 720, interiorArt()).then(step));
+    jobs.push(buildTexture(this, 'interior', INTERIOR_W, 720, interiorArt()).then(step));
     await Promise.all(jobs);
+    SKY_COLORS.forEach((c, r) => this.makeSky(`sky${r}`, c));
+    this.makeSky('skyboss', SKY_BOSS);
     this.makeDigits();
     prog(1);
     document.getElementById('boot')?.classList.add('hidden');
     this.scene.start('Home');
+  }
+
+  /** שמיים מצוירים: מעבר צבעים אנכי חלק, נמתח לכל רוחב המסך */
+  private makeSky(key: string, colors: string[]) {
+    const c = document.createElement('canvas');
+    c.width = 8;
+    c.height = 256;
+    const ctx = c.getContext('2d')!;
+    const g = ctx.createLinearGradient(0, 0, 0, 256);
+    colors.forEach((col, i) => g.addColorStop(i / (colors.length - 1), col));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 8, 256);
+    if (this.textures.exists(key)) this.textures.remove(key);
+    this.textures.addCanvas(key, c);
   }
 
   /** גופן ספרות מהיר למספרי הנזק */

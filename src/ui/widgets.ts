@@ -1,7 +1,7 @@
 // רכיבי ממשק משותפים
 import Phaser from 'phaser';
 import { FRAMES, img } from '../art/svg';
-import { G, W, H, VERSION, fmt } from '../core';
+import { G, W, H, VERSION, fmt, L, R } from '../core';
 import { audio } from '../audio';
 import { xpToNext } from '../game/economy';
 import { HERO_NAME, MAX_HERO_LEVEL } from '../game/data';
@@ -95,11 +95,57 @@ export interface Btn extends Phaser.GameObjects.Container {
   label: Phaser.GameObjects.Text;
   setLabel(s: string): void;
   setEnabled(on: boolean): void;
+  /** מעדכן את שורת המחיר (אייקון ומספר זה לצד זה) */
+  setPrice(items: PriceItem[] | string): void;
   enabled: boolean;
+}
+
+export interface PriceItem {
+  icon?: string;
+  text: string;
+  color?: string;
+}
+
+export interface PriceRow extends Phaser.GameObjects.Container {
+  set(items: PriceItem[]): void;
+}
+
+/**
+ * שורת מחיר: אייקון ומספר זה לצד זה עם רווח קבוע, משמאל לימין, ממורכזת.
+ * המספר אף פעם לא נחתך ולא מכוסה באייקון; אם השורה רחבה מדי היא מתכווצת.
+ */
+export function priceRow(scene: Phaser.Scene, x: number, y: number, size: number, maxW: number, items: PriceItem[] = []): PriceRow {
+  const c = scene.add.container(x, y) as PriceRow;
+  c.set = (list: PriceItem[]) => {
+    c.removeAll(true);
+    const parts: { o: Phaser.GameObjects.Image | Phaser.GameObjects.Text; w: number; pad: number }[] = [];
+    list.forEach((it, i) => {
+      if (i > 0) parts.push({ o: null as never, w: size * 0.55, pad: 0 });
+      if (it.icon) {
+        const ic = img(scene, 0, 0, it.icon, (size * 1.12) / 44);
+        c.add(ic);
+        parts.push({ o: ic, w: size * 1.12, pad: 0 });
+        parts.push({ o: null as never, w: size * 0.22, pad: 0 });
+      }
+      const t = txt(scene, 0, 0, it.text, size, it.color ?? C.cream, { weight: '900', ox: 0 });
+      c.add(t);
+      parts.push({ o: t, w: t.width - 12, pad: 6 });
+    });
+    const total = parts.reduce((a, p) => a + p.w, 0);
+    let px = -total / 2;
+    for (const p of parts) {
+      if (p.o) p.o.x = p.o instanceof Phaser.GameObjects.Text ? px - p.pad : px + p.w / 2;
+      px += p.w;
+    }
+    c.setScale(total > maxW ? maxW / total : 1);
+  };
+  c.set(items);
+  return c;
 }
 
 export interface BtnOpts {
   size?: number;
+  price?: PriceItem[];
   icon?: string;
   sub?: string;
   subIcon?: string;
@@ -144,7 +190,8 @@ export function button(scene: Phaser.Scene, x: number, y: number, w: number, h: 
   const bg = nine(scene, 0, 0, 'btn_' + color, w, h, Math.min(26, h / 2 - 2), Math.min(24, h / 2 - 4), Math.min(30, h / 2));
   c.add(bg);
   const size = o.size ?? Math.round(h * 0.42);
-  const hasSub = !!o.sub;
+  const price0: PriceItem[] | null = o.price ?? (o.sub ? [{ icon: o.subIcon, text: o.sub }] : null);
+  const hasSub = !!price0;
   const label_ = txt(scene, 0, hasSub ? -h * 0.2 : -h * 0.06, label, size, C.cream, { weight: '900', sw: Math.max(4, size * 0.2) });
   c.add(label_);
   c.label = label_;
@@ -153,19 +200,12 @@ export function button(scene: Phaser.Scene, x: number, y: number, w: number, h: 
     c.add(ic);
     label_.x = -h * 0.2;
   }
-  if (hasSub) {
-    const ss = o.subSize ?? Math.round(h * 0.26);
-    const st = txt(scene, 0, h * 0.15, o.sub!, ss, C.cream, { weight: '700' });
-    c.add(st);
-    if (o.subIcon) {
-      const ic = img(scene, 0, h * 0.15, o.subIcon, (ss * 1.1) / 44);
-      c.add(ic);
-      const tw = st.width - 12;
-      ic.x = -tw / 2 - 2;
-      st.x = ss * 0.55;
-    }
-    c.setData('sub', st);
+  let row: PriceRow | null = null;
+  if (price0) {
+    row = priceRow(scene, 0, h * 0.16, o.subSize ?? Math.round(h * 0.26), w - 18, price0);
+    c.add(row);
   }
+  c.setPrice = (items: PriceItem[] | string) => row?.set(typeof items === 'string' ? [{ text: items }] : items);
   c.enabled = true;
   c.setLabel = (s: string) => setT(label_, s);
   c.setEnabled = (on: boolean) => {
@@ -238,21 +278,23 @@ export function banner(scene: Phaser.Scene, title: string, y = 52, w = 400): Pha
 
 export function topBar(scene: Phaser.Scene, title?: string): TopBar {
   const s = G.save;
-  // זהב ויהלומים
-  nine(scene, 150, 68, 'panel_wood', 252, 112, 24);
-  img(scene, 62, 46, 'coin', 0.78);
-  img(scene, 62, 90, 'gem', 0.74);
-  const gold = txt(scene, 252, 46, '', 25, C.gold, { ox: 1, weight: '900' });
-  const gems = txt(scene, 252, 90, '', 25, C.blue, { ox: 1, weight: '900' });
-  // גיבור
-  nine(scene, 1124, 62, 'panel_wood', 268, 96, 24);
-  const px = 1010;
+  // זהב ויהלומים - מעוגן לפינה השמאלית
+  const lx = L(0);
+  nine(scene, lx + 150, 68, 'panel_wood', 252, 112, 24);
+  img(scene, lx + 62, 46, 'coin', 0.78);
+  img(scene, lx + 62, 90, 'gem', 0.74);
+  const gold = txt(scene, lx + 252, 46, '', 25, C.gold, { ox: 1, weight: '900' });
+  const gems = txt(scene, lx + 252, 90, '', 25, C.blue, { ox: 1, weight: '900' });
+  // גיבור - מעוגן לפינה הימנית
+  const rx = R(0);
+  nine(scene, rx + 1124, 62, 'panel_wood', 268, 96, 24);
+  const px = rx + 1010;
   const py = 62;
   const ring = scene.add.graphics();
   img(scene, px, py, 'portrait_ring', 1.02);
   img(scene, px - 2, py + 30, 'hero_head', 1.25);
-  const lvl = txt(scene, 1238, 42, '', 24, C.gold, { ox: 1, weight: '900' });
-  txt(scene, 1238, 82, HERO_NAME, 22, C.cream, { ox: 1 });
+  const lvl = txt(scene, rx + 1238, 42, '', 24, C.gold, { ox: 1, weight: '900' });
+  txt(scene, rx + 1238, 82, HERO_NAME, 22, C.cream, { ox: 1 });
   if (title) banner(scene, title);
   versionLabel(scene);
   const tb: TopBar = {
@@ -281,7 +323,7 @@ export interface Modal {
 
 export function modal(scene: Phaser.Scene, w: number, h: number, title?: string, onClose?: () => void, closable = true): Modal {
   const c = scene.add.container(0, 0).setDepth(1000);
-  const dim = scene.add.rectangle(W / 2, H / 2, W * 2, H * 2, 0x120a05, 0.66).setInteractive();
+  const dim = scene.add.rectangle(W / 2, H / 2, W * 3, H * 2, 0x120a05, 0.66).setInteractive();
   c.add(dim);
   const box = scene.add.container(W / 2, H / 2);
   c.add(box);

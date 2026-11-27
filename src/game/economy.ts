@@ -14,8 +14,12 @@ import {
   LEVELS_PER_REGION,
   levelDef,
   ENEMIES,
+  UNIT_SLOTS,
+  capacityFor,
 } from './data';
-import type { Save } from './save';
+import { type Save, armySlots } from './save';
+
+export { armySlots };
 
 export type Rng = () => number;
 
@@ -46,7 +50,11 @@ export function xpToNext(lvl: number): number {
 }
 
 export function capacity(heroLvl: number): number {
-  return Math.min(110, 10 + 2 * heroLvl);
+  return capacityFor(heroLvl);
+}
+
+export function freeSlots(s: Save): number {
+  return capacity(s.heroLvl) - armySlots(s);
 }
 
 export function armyCount(s: Save): number {
@@ -129,12 +137,28 @@ export function isUnlocked(s: Save, id: UnitId): boolean {
 }
 
 export function canRecruit(s: Save, id: UnitId): boolean {
-  return isUnlocked(s, id) && armyCount(s) < capacity(s.heroLvl) && s.gold >= recruitCost(id, s.units[id].lvl);
+  return isUnlocked(s, id) && freeSlots(s) >= UNIT_SLOTS[id] && s.gold >= recruitCost(id, s.units[id].lvl);
 }
 
 export function recruit(s: Save, id: UnitId): boolean {
   if (!canRecruit(s, id)) return false;
   s.gold -= recruitCost(id, s.units[id].lvl);
+  s.units[id].count++;
+  return true;
+}
+
+/** מעביר חייל אחד מהצבא למילואים */
+export function toReserve(s: Save, id: UnitId): boolean {
+  if (s.units[id].count <= 0) return false;
+  s.units[id].count--;
+  s.reserve[id]++;
+  return true;
+}
+
+/** מחזיר חייל אחד מהמילואים לצבא, אם יש מקום */
+export function fromReserve(s: Save, id: UnitId): boolean {
+  if (s.reserve[id] <= 0 || freeSlots(s) < UNIT_SLOTS[id]) return false;
+  s.reserve[id]--;
   s.units[id].count++;
   return true;
 }

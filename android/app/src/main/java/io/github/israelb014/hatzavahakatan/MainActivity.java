@@ -29,7 +29,26 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) hideSystemBars();
+        if (hasFocus) {
+            hideSystemBars();
+            sendCutoutInsets();
+        }
+    }
+
+    /** Tells the game how far the display cutout (notch / camera hole) reaches in from each side, so the UI can keep clear of it. */
+    private void sendCutoutInsets() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || getBridge() == null) return;
+        getWindow().getDecorView().post(() -> {
+            try {
+                android.view.WindowInsets insets = getWindow().getDecorView().getRootWindowInsets();
+                android.view.DisplayCutout cutout = insets == null ? null : insets.getDisplayCutout();
+                int left = cutout == null ? 0 : cutout.getSafeInsetLeft();
+                int right = cutout == null ? 0 : cutout.getSafeInsetRight();
+                getBridge().getWebView().evaluateJavascript("window.__hkInsets && window.__hkInsets(" + left + "," + right + ")", null);
+            } catch (Exception ignored) {
+                // The game falls back to its default margins.
+            }
+        });
     }
 
     /** Fullscreen immersive mode: status and navigation bars stay hidden. */

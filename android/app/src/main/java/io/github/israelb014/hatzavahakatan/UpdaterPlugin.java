@@ -2,8 +2,6 @@ package io.github.israelb014.hatzavahakatan;
 
 import android.content.Intent;
 import android.net.Uri;
-import android.os.Build;
-import android.provider.Settings;
 
 import androidx.core.content.FileProvider;
 
@@ -91,16 +89,8 @@ public class UpdaterPlugin extends Plugin {
     }
 
     private void install(File apk) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !getContext().getPackageManager().canRequestPackageInstalls()) {
-            // The user has to allow installs from this app once; the installer intent below still opens afterwards.
-            Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getContext().getPackageName()));
-            settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try {
-                getContext().startActivity(settings);
-            } catch (Exception ignored) {
-                // fall through to the installer, which shows its own prompt
-            }
-        }
+        // The system installer asks for the "install unknown apps" permission itself the first time,
+        // then continues with the install, so no separate settings screen is opened here.
         Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", apk);
         Intent intent = new Intent(Intent.ACTION_VIEW);
         intent.setDataAndType(uri, "application/vnd.android.package-archive");

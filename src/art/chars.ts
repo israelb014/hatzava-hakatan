@@ -53,15 +53,24 @@ function headBase(skin: string, ear: 'round' | 'point' | 'none' = 'round'): stri
   );
 }
 
-function knightHelm(metal: string, plume: string, gold = false): string {
+/**
+ * ראש אביר עם קסדה פתוחה: הפנים נראות בבירור בתוך פתח הקסדה, ושולי הקסדה ממסגרים אותן.
+ * תווי הפנים מצוירים מתחת לקסדה ונמצאים כולם בתוך הפתח, כך ששום דבר לא "מודבק" על המתכת.
+ */
+function knightHead(skin: string, metal: string, plume: string, rim: string): string {
+  const face = `<g transform="translate(-3,0)">${eyeCute()}${brows()}${mouth()}${blush}</g>`;
+  const opening = 'M20.5,-5 L20.5,-21 C20,-28 14,-31 7.5,-31 C1,-31 -5,-28 -5.5,-21 L-5.5,-4';
   return (
+    headBase(skin, 'none') +
+    face +
     `<path d="M-2,-42 C-10,-66 -42,-58 -36,-28 C-30,-40 -20,-42 -8,-37 Z" fill="${plume}" ${st()}/>` +
     `<path d="M-12,-50 C-22,-52 -30,-44 -32,-36" stroke="${shade(plume, 0.35)}" stroke-width="2.5" fill="none" stroke-linecap="round" opacity=".8"/>` +
-    `<path d="M-25.5,-13 C-28,-49 28,-49 25.5,-16 L25.5,-25 C15,-31 1,-31 -7,-27 L-7,-5 C-16,-5 -24.5,-7 -25.5,-13 Z" fill="${metal}" ${st()}/>` +
-    `<path d="M-25,-14 C-26,-30 -20,-40 -10,-44 C-16,-34 -17,-22 -15,-6 C-20,-7 -24,-9 -25,-14Z" fill="#000" opacity=".13"/>` +
-    `<path d="M-10,-41 C-3,-45 8,-45 15,-41" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" opacity=".75"/>` +
-    `<path d="M8.6,-31 L13,-31 L12.4,-16.5 L9.2,-16.5 Z" fill="${metal}" ${st(2.2)}/>` +
-    (gold ? `<path d="M-7,-27 C1,-31 15,-31 25.5,-25" stroke="#f2c230" stroke-width="2.6" fill="none"/>` : '')
+    // כיפת הקסדה, מגן לחי אחורי ורצועת לחי קדמית - עם פתח לפנים
+    `<path d="M-25.5,-12 C-28,-50 28,-50 25.5,-14 L25.5,-6 C25.5,-2.5 20.5,-2.5 20.5,-5 L20.5,-21 C20,-28 14,-31 7.5,-31 C1,-31 -5,-28 -5.5,-21 L-5.5,-4 C-14,-3.5 -24.5,-6 -25.5,-12 Z" fill="${metal}" ${st()}/>` +
+    `<path d="M-25,-13 C-26,-30 -20,-40 -10,-44 C-16,-34 -16,-20 -14,-5 C-19,-6 -24,-8 -25,-13Z" fill="#000" opacity=".13"/>` +
+    `<path d="M-10,-41 C-3,-45.5 9,-45.5 16,-41" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" opacity=".75"/>` +
+    `<path d="${opening}" fill="none" stroke="${O}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `<path d="${opening}" fill="none" stroke="${rim}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>`
   );
 }
 
@@ -190,7 +199,7 @@ function looks(): Record<string, { def: Omit<CharDef, 'key'>; look: Look }> {
       def: { scale: 1.5, tex: 3, style: 'swing', armRest: rest.sword, hasCape: true },
       look: {
         skin: SKIN,
-        head: headBase(SKIN, 'none') + eyeCute() + brows() + mouth() + blush + knightHelm('#d5dee6', '#2f7de0', true),
+        head: knightHead(SKIN, '#d5dee6', '#2f7de0', '#f2c230'),
         body: torso('#d5dee6', 'plate', '#8a5226'),
         leg: leg('#3a4d7a', '#c9d3dc'),
         arm: arm('#d5dee6', SKIN, '#eef3f7'),
@@ -202,7 +211,7 @@ function looks(): Record<string, { def: Omit<CharDef, 'key'>; look: Look }> {
       def: { scale: 1.2, tex: 2.5, style: 'swing', armRest: rest.sword },
       look: {
         skin: SKIN,
-        head: headBase(SKIN, 'none') + eyeCute() + brows() + mouth() + blush + knightHelm(METAL, '#d8402c'),
+        head: knightHead(SKIN, METAL, '#d8402c', '#8f99a3'),
         body: torso('#4f8fd8', 'tunic'),
         leg: leg('#5a4636', '#7a4a22'),
         arm: arm('#4f8fd8', SKIN, METAL),

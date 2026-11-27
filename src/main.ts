@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import './style.css';
-import { G, W, H, initSave } from './core';
+import { G, V, H, initSave, computeView, setNativeInsets } from './core';
 import { audio } from './audio';
 import { BootScene } from './scenes/Boot';
 import { HomeScene } from './scenes/Home';
@@ -23,17 +23,14 @@ async function start() {
     /* ממשיכים עם גופן המערכת */
   }
   initSave();
-  // רזולוציה פנימית לפי המסך: חד במסכים גדולים, קל במכשירים חלשים
-  const dpr = Math.min(window.devicePixelRatio || 1, 3);
-  const screenH = Math.min(window.innerWidth, window.innerHeight) * dpr;
-  const screenW = Math.max(window.innerWidth, window.innerHeight) * dpr;
-  G.res = Math.round(Phaser.Math.Clamp(Math.min(screenH / H, screenW / W), 1, 1.5) * 100) / 100;
+  // המשחק ממלא את כל רוחב המסך; הרזולוציה הפנימית לפי המסך
+  computeView();
 
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
     backgroundColor: '#3a2415',
-    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: Math.round(W * G.res), height: Math.round(H * G.res) },
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: Math.round(V.w * G.res), height: Math.round(H * G.res) },
     render: { antialias: true, powerPreference: 'high-performance' },
     input: { activePointers: 4 },
     fps: { target: 60 },
@@ -47,6 +44,29 @@ async function start() {
   window.addEventListener('pointerdown', unlock);
   window.addEventListener('keydown', unlock);
   document.addEventListener('visibilitychange', () => (document.hidden ? audio.suspend() : audio.resume()));
+  // שינוי גודל חלון / סיבוב מסך / שולי מגרעת: מתאימים את רוחב המשחק ובונים מחדש את המסך הנוכחי
+  let timer = 0;
+  const relayout = () => {
+    if (!computeView()) return;
+    game.scale.setGameSize(Math.round(V.w * G.res), Math.round(H * G.res));
+    game.scale.refresh();
+    for (const sc of game.scene.getScenes(true)) {
+      const key = sc.scene.key;
+      if (key === 'Boot') continue;
+      if (key === 'Battle') (sc as BattleScene).onResize();
+      else sc.scene.restart();
+    }
+  };
+  const queue = () => {
+    clearTimeout(timer);
+    timer = window.setTimeout(relayout, 180);
+  };
+  window.addEventListener('resize', queue);
+  window.addEventListener('orientationchange', queue);
+  (window as unknown as { __hkInsets: (l: number, r: number) => void }).__hkInsets = (l, r) => {
+    setNativeInsets(l, r);
+    queue();
+  };
   initPlatform();
 }
 

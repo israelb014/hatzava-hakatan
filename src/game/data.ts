@@ -32,13 +32,24 @@ export const UNIT_IDS: UnitId[] = ['sword', 'archer', 'spear', 'mage', 'healer',
 
 export const UNITS: Record<UnitId, UnitDef> = {
   sword: { id: 'sword', name: 'חרבן', role: 'melee', unlock: 1, cost: 12, up: 30, hp: 130, atk: 14, def: 5, range: 56, speed: 72, cd: 1.0 },
-  archer: { id: 'archer', name: 'קשת', role: 'ranged', unlock: 1, cost: 14, up: 35, hp: 70, atk: 12, def: 1, range: 330, speed: 66, cd: 1.3 },
+  archer: { id: 'archer', name: 'קשת', role: 'ranged', unlock: 1, cost: 14, up: 35, hp: 70, atk: 13.8, def: 1, range: 330, speed: 66, cd: 1.3 },
   spear: { id: 'spear', name: 'נושא חנית', role: 'melee', unlock: 3, cost: 18, up: 50, hp: 115, atk: 14, def: 4, range: 98, speed: 68, cd: 1.1, bonusBig: 1.9 },
-  mage: { id: 'mage', name: 'קוסם', role: 'mage', unlock: 6, cost: 28, up: 90, hp: 65, atk: 17, def: 1, range: 300, speed: 60, cd: 1.9, splash: 75 },
-  healer: { id: 'healer', name: 'מרפאה', role: 'healer', unlock: 9, cost: 34, up: 110, hp: 80, atk: 20, def: 1, range: 250, speed: 64, cd: 1.5 },
+  mage: { id: 'mage', name: 'קוסם', role: 'mage', unlock: 6, cost: 28, up: 90, hp: 65, atk: 19.55, def: 1, range: 300, speed: 60, cd: 1.9, splash: 75 },
+  healer: { id: 'healer', name: 'מרפאה', role: 'healer', unlock: 9, cost: 34, up: 110, hp: 80, atk: 28, def: 1, range: 250, speed: 64, cd: 1.5 },
   samurai: { id: 'samurai', name: 'סמוראי', role: 'melee', unlock: 14, cost: 45, up: 160, hp: 170, atk: 30, def: 5, range: 60, speed: 118, cd: 0.7 },
   giant: { id: 'giant', name: 'ענק', role: 'melee', unlock: 20, cost: 80, up: 300, hp: 700, atk: 40, def: 9, range: 80, speed: 44, cd: 1.8, big: true, knock: 42 },
 };
+
+/** כמה מקומות בצבא תופסת כל יחידה */
+export const UNIT_SLOTS: Record<UnitId, number> = { sword: 1, archer: 1, spear: 1, mage: 1, healer: 1, samurai: 2, giant: 3 };
+/** סדר המערך מהחזית לאחור (וגם סדר העדיפות לכניסה לקרב) */
+export const FORMATION_ORDER: UnitId[] = ['giant', 'spear', 'sword', 'samurai', 'archer', 'mage', 'healer'];
+/** מרפאה מרפאת עד שני חיילים בכל פעם */
+export const HEAL_TARGETS = 2;
+
+export function capacityFor(heroLvl: number): number {
+  return Math.min(110, 10 + 2 * heroLvl);
+}
 
 export const MAX_UNIT_LEVEL = 30;
 export const MAX_HERO_LEVEL = 50;
@@ -51,8 +62,8 @@ export const ENEMIES: Record<EnemyId, FighterDef> = {
   brute: { name: 'שד מקורנן', role: 'melee', hp: 400, atk: 27, def: 6, range: 72, speed: 46, cd: 1.7, big: true, knock: 30 },
   impking: { name: 'מלך השדונים', role: 'boss', hp: 800, atk: 17, def: 6, range: 105, speed: 40, cd: 1.7, big: true },
   spirit: { name: 'רוח היער', role: 'boss', hp: 1050, atk: 20, def: 7, range: 115, speed: 38, cd: 1.8, big: true },
-  icegiant: { name: 'ענק הקרח', role: 'boss', hp: 1050, atk: 20, def: 9, range: 125, speed: 34, cd: 2.0, big: true },
-  lord: { name: 'שר השדים', role: 'boss', hp: 820, atk: 17, def: 10, range: 130, speed: 36, cd: 1.8, big: true },
+  icegiant: { name: 'ענק הקרח', role: 'boss', hp: 800, atk: 15, def: 9, range: 125, speed: 34, cd: 2.0, big: true },
+  lord: { name: 'שר השדים', role: 'boss', hp: 780, atk: 15, def: 10, range: 130, speed: 36, cd: 1.8, big: true },
 };
 
 export const BOSS_OF_REGION: EnemyId[] = ['impking', 'spirit', 'icegiant', 'lord'];
@@ -90,10 +101,11 @@ export interface LevelDef {
 
 /** מכפיל עוצמת האויבים לפי מספר השלב */
 export function enemyHpMult(n: number): number {
-  return 2.6 + 0.54 * (n - 1);
+  // אחרי שלב 24 הקושי עולה לאט יותר
+  return 2.6 + 0.54 * Math.min(n - 1, 23) + 0.28 * Math.max(0, n - 24);
 }
 export function enemyAtkMult(n: number): number {
-  return 2.6 + 0.072 * (n - 1);
+  return 2.6 + 0.072 * Math.min(n - 1, 23) + 0.034 * Math.max(0, n - 24);
 }
 
 export function levelDef(n: number): LevelDef {
@@ -101,7 +113,7 @@ export function levelDef(n: number): LevelDef {
   const idx = (n - 1) % LEVELS_PER_REGION;
   const isBoss = idx === LEVELS_PER_REGION - 1;
   // כל שלב רביעי קשה מעט יותר
-  const spike = idx % 4 === 3 && !isBoss ? 1.15 : 1;
+  const spike = idx % 4 === 3 && !isBoss ? (n > 24 ? 1.07 : 1.15) : 1;
   const total = Math.round((10 + n * 0.95) * spike);
   const waveCount = n <= 2 ? 1 : n <= 6 ? 2 : 3;
   const waves: WaveGroup[][] = [];

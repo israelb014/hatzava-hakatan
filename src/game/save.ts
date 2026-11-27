@@ -1,5 +1,5 @@
 // מצב המשחק ושמירה
-import { type Item, type Slot, type UnitId, UNIT_IDS, SLOTS, LEVEL_COUNT } from './data';
+import { type Item, type Slot, type UnitId, UNIT_IDS, SLOTS, LEVEL_COUNT, UNIT_SLOTS, FORMATION_ORDER, capacityFor } from './data';
 
 export interface QuestProgress {
   id: string;
@@ -12,6 +12,8 @@ export interface Save {
   heroLvl: number;
   heroXp: number;
   units: Record<UnitId, { lvl: number; count: number }>;
+  /** מילואים: חיילים שאינם נכנסים לקרב (נוסף בגרסת שמירה 2) */
+  reserve: Record<UnitId, number>;
   stars: number[];
   equip: Record<Slot, Item | null>;
   inv: Item[];
@@ -25,6 +27,7 @@ export interface Save {
 }
 
 export const SAVE_KEY = 'hatzava-hakatan-save-v1';
+export const SAVE_VERSION = 2;
 const CODE_PREFIX = 'HK1.';
 
 export function newSave(): Save {
@@ -32,15 +35,18 @@ export function newSave(): Save {
   for (const id of UNIT_IDS) units[id] = { lvl: 1, count: 0 };
   units.sword.count = 6;
   units.archer.count = 4;
+  const reserve = {} as Save['reserve'];
+  for (const id of UNIT_IDS) reserve[id] = 0;
   const equip = {} as Save['equip'];
   for (const s of SLOTS) equip[s] = null;
   return {
-    v: 1,
+    v: SAVE_VERSION,
     gold: 150,
     gems: 10,
     heroLvl: 1,
     heroXp: 0,
     units,
+    reserve,
     stars: new Array(LEVEL_COUNT).fill(0),
     equip,
     inv: [],
@@ -69,6 +75,7 @@ export function sanitize(raw: unknown): Save {
   for (const id of UNIT_IDS) {
     const u = r.units?.[id];
     if (u) s.units[id] = { lvl: num(u.lvl, 1, 1, 30), count: num(u.count, 0, 0, 110) };
+    s.reserve[id] = num(r.reserve?.[id], 0, 0, 9999);
   }
   if (Array.isArray(r.stars)) for (let i = 0; i < LEVEL_COUNT; i++) s.stars[i] = num(r.stars[i], 0, 0, 3);
   const okItem = (it: unknown): it is Item =>
@@ -91,7 +98,34 @@ export function sanitize(raw: unknown): Save {
   if (r.stats && typeof r.stats === 'object') s.stats = { ...r.stats };
   if (r.settings) s.settings = { music: r.settings.music !== false, sfx: r.settings.sfx !== false };
   s.tutorialDone = !!r.tutorialDone;
+  fitArmy(s);
   return s;
+}
+
+export function armySlots(s: Save): number {
+  let n = 0;
+  for (const id of UNIT_IDS) n += s.units[id].count * UNIT_SLOTS[id];
+  return n;
+}
+
+/**
+ * מוודא שהצבא אינו חורג מהקיבולת. חיילים עודפים עוברים למילואים ולעולם אינם נמחקים.
+ * נשארים בצבא לפי סדר המערך (מהחזית לאחור). משמש גם להמרת שמירות מגרסה 1,
+ * שבה כל יחידה תפסה מקום אחד.
+ */
+export function fitArmy(s: Save): number {
+  let over = armySlots(s) - capacityFor(s.heroLvl);
+  let moved = 0;
+  for (let i = FORMATION_ORDER.length - 1; i >= 0 && over > 0; i--) {
+    const id = FORMATION_ORDER[i];
+    const n = Math.min(s.units[id].count, Math.ceil(over / UNIT_SLOTS[id]));
+    if (n <= 0) continue;
+    s.units[id].count -= n;
+    s.reserve[id] += n;
+    over -= n * UNIT_SLOTS[id];
+    moved += n;
+  }
+  return moved;
 }
 
 function toB64(str: string): string {
@@ -132,7 +166,8 @@ export function importCode(code: string): Save | null {
     const body = rest.slice(dot + 1);
     if (checksum(body) !== sum) return null;
     const obj = JSON.parse(fromB64(body));
-    if (!obj || typeof obj !== 'object' || obj.v !== 1) return null;
+    // קודים מגרסת שמירה 1 מתקבלים ומומרים
+    if (!obj || typeof obj !== 'object' || (obj.v !== 1 && obj.v !== 2)) return null;
     return sanitize(obj);
   } catch {
     return null;

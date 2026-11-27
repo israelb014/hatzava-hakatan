@@ -1,6 +1,6 @@
 // מחנה - מסך הבית
 import Phaser from 'phaser';
-import { G, W, go, persist, setupScene } from '../core';
+import { G, W, L, R, go, persist, setupScene } from '../core';
 import { img } from '../art/svg';
 import { Puppet } from '../art/puppet';
 import { Scenery } from '../ui/scenery';
@@ -28,6 +28,8 @@ export class HomeScene extends Phaser.Scene {
     img(this, 150, 560, 'tent', 1.55);
     img(this, 380, 520, 'tent', 1.2);
     img(this, 70, 640, 'bush', 1.3);
+    img(this, L(40), 660, 'bush', 1.1);
+    img(this, R(1250), 700, 'bush', 1.2);
     img(this, 880, 700, 'fence', 1.5);
     img(this, 800, 560, 'fence', 0.9);
     img(this, 560, 590, 'flag', 1.05);
@@ -48,7 +50,7 @@ export class HomeScene extends Phaser.Scene {
     txt(this, W / 2, 46, 'מחנה', 60, C.cream, { weight: '900', sw: 9, shadow: true });
     txt(this, W / 2, 100, 'הצבא הקטן', 34, '#ffd86b', { weight: '900', sw: 7 });
 
-    const bx = 1084;
+    const bx = R(1084);
     const fight = button(this, bx, 252, 372, 148, 'לקרב', 'orange', () => go(this, 'Map'), { size: 86 });
     this.tweens.add({ targets: fight, scaleX: 1.025, scaleY: 1.025, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     button(this, bx, 398, 352, 104, 'הצבא שלי', 'brown', () => go(this, 'Army'), { size: 50 });
@@ -61,10 +63,11 @@ export class HomeScene extends Phaser.Scene {
       badge.add(txt(this, 0, -1, String(n), 24, C.cream, { weight: '900' }));
       this.tweens.add({ targets: badge, scale: 1.15, duration: 500, yoyo: true, repeat: -1 });
     }
-    roundBtn(this, 58, 172, 'round_dark', 'ic_gear', 68, () => this.openSettings());
+    roundBtn(this, L(58), 172, 'round_dark', 'ic_gear', 68, () => this.openSettings());
 
     this.setup();
     if (!G.save.tutorialDone) this.time.delayedCall(350, () => this.tutorial());
+    else if (G.movedToReserve > 0) this.time.delayedCall(350, () => this.reserveNotice());
   }
 
   private setup() {
@@ -84,6 +87,17 @@ export class HomeScene extends Phaser.Scene {
       f.scaleX = b * (1 + Math.sin(this.t * 7 + p * 2) * 0.08);
       f.rotation = Math.sin(this.t * 5 + p) * 0.07;
     }
+  }
+
+  /** הודעה חד-פעמית אחרי המרת שמירה: חיילים שחרגו מהקיבולת החדשה עברו למילואים */
+  private reserveNotice() {
+    const n = G.movedToReserve;
+    G.movedToReserve = 0;
+    const m = modal(this, 640, 400, 'שינוי בקיבולת הצבא');
+    m.c.add(
+      txt(this, 0, -30, `מעכשיו ענק תופס 3 מקומות וסמוראי תופס 2 מקומות. שום חייל לא נמחק: ${n} חיילים שחרגו מהקיבולת עברו למילואים. אפשר להחליף בין הצבא למילואים במסך "הצבא שלי".`, 22, C.ink, { weight: '700', wrap: 540, align: 'center' }),
+    );
+    m.c.add(button(this, 0, 130, 280, 70, 'לצבא שלי', 'orange', () => go(this, 'Army'), { size: 30 }));
   }
 
   private openSettings() {
@@ -131,14 +145,14 @@ export class HomeScene extends Phaser.Scene {
 
   private tutorial() {
     const steps: { x: number; y: number; text: string }[] = [
-      { x: 888, y: 398, text: 'ברוך הבא למחנה! כאן מגייסים חיילים חדשים ומשדרגים אותם.' },
-      { x: 888, y: 512, text: 'כאן מציידים את הגיבור בציוד שנופל בקרבות ומשדרגים את הכישורים שלו.' },
-      { x: 888, y: 626, text: 'השלם משימות יומיות והישגים כדי לקבל זהב ויהלומים.' },
-      { x: 878, y: 252, text: 'מוכן? צא לקרב! הזז את הגיבור עם החצים, והחיילים ילחמו לצדך.' },
+      { x: R(888), y: 398, text: 'ברוך הבא למחנה! כאן מגייסים חיילים חדשים ומשדרגים אותם.' },
+      { x: R(888), y: 512, text: 'כאן מציידים את הגיבור בציוד שנופל בקרבות ומשדרגים את הכישורים שלו.' },
+      { x: R(888), y: 626, text: 'השלם משימות יומיות והישגים כדי לקבל זהב ויהלומים.' },
+      { x: R(878), y: 252, text: 'מוכן? צא לקרב! הזז את הגיבור עם החצים, והחיילים ילחמו לצדך.' },
     ];
     let i = 0;
     const layer = this.add.container(0, 0).setDepth(1500);
-    const dim = this.add.rectangle(W / 2, 360, W * 2, 1500, 0x120a05, 0.45).setInteractive();
+    const dim = this.add.rectangle(W / 2, 360, W * 3, 1500, 0x120a05, 0.45).setInteractive();
     layer.add(dim);
     const bubble = this.add.container(0, 0);
     layer.add(bubble);

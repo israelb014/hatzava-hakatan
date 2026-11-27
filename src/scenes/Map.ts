@@ -1,6 +1,6 @@
 // מפת העולם
 import Phaser from 'phaser';
-import { G, W, H, go, setupScene, fmt, persist } from '../core';
+import { G, W, V, go, setupScene, fmt, persist } from '../core';
 import { img } from '../art/svg';
 import { MAP_REGION_W } from '../art/bg';
 import { button, topBar, txt, C, nine, modal, toast, pressable, type TopBar } from '../ui/widgets';
@@ -56,7 +56,7 @@ export class MapScene extends Phaser.Scene {
     button(this, W / 2, 664, 250, 68, 'חזרה למחנה', 'orange', () => go(this, 'Home'), { size: 30 });
 
     const focus = data?.focus ?? cur;
-    this.scrollX = Phaser.Math.Clamp(nodeX(focus - 1) - W / 2, 0, WORLD_W - W);
+    this.scrollX = this.clamp(nodeX(focus - 1) - W / 2);
     this.world.x = -this.scrollX;
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
@@ -69,20 +69,25 @@ export class MapScene extends Phaser.Scene {
       if (!this.dragging || !p.isDown) return;
       const dx = p.worldX - this.lastX;
       this.lastX = p.worldX;
-      this.scrollX = Phaser.Math.Clamp(this.scrollX - dx, 0, WORLD_W - W);
+      this.scrollX = this.clamp(this.scrollX - dx);
       this.vel = -dx * 60;
     });
     this.input.on('pointerup', () => (this.dragging = false));
     this.input.on('wheel', (_p: unknown, _o: unknown, dx: number, dy: number) => {
-      if (!this.modalOpen) this.scrollX = Phaser.Math.Clamp(this.scrollX + dx + dy, 0, WORLD_W - W);
+      if (!this.modalOpen) this.scrollX = this.clamp(this.scrollX + dx + dy);
     });
     setupScene(this);
+  }
+
+  /** הגלילה מוגבלת כך שהמפה תמיד ממלאת את כל רוחב המסך */
+  private clamp(x: number) {
+    return Phaser.Math.Clamp(x, V.ex, WORLD_W - W - V.ex);
   }
 
   update(_t: number, dms: number) {
     const dt = Math.min(0.05, dms / 1000);
     if (!this.dragging && Math.abs(this.vel) > 5) {
-      this.scrollX = Phaser.Math.Clamp(this.scrollX + this.vel * dt, 0, WORLD_W - W);
+      this.scrollX = this.clamp(this.scrollX + this.vel * dt);
       this.vel *= Math.pow(0.04, dt);
     }
     this.world.x = -this.scrollX;
