@@ -113,7 +113,13 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          # Maven Central sometimes answers 429 (rate limit); retry a few times before failing.
+          for attempt in 1 2 3 4; do
+            if ./gradlew assembleRelease --no-daemon; then exit 0; fi
+            echo "Gradle build failed (attempt $attempt), retrying in 60s"
+            sleep 60
+          done
+          exit 1
       - name: Upload APK to release
         env:
           GH_TOKEN: ${{ github.token }}
